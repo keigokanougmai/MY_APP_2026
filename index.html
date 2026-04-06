@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>K-Vocab Pro (Stats & Audio)</title>
+    <style>
+        :root { --primary: #5c67f2; --accent: #ff4757; --success: #2ed573; --bg: #f8f9fa; --soft-purple: #eef1ff; }
+        body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 10px; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding-bottom: 60px; }
+        
+        .tabs { display: flex; gap: 8px; margin-bottom: 15px; position: sticky; top: 0; z-index: 100; background: var(--bg); padding: 5px 0; }
+        .tab-btn { flex: 1; padding: 12px 5px; border: none; border-radius: 12px; cursor: pointer; background: #e0e0e0; font-weight: bold; font-size: 11px; }
+        .tab-btn.active { background: var(--primary); color: white; }
+
+        .panel { display: none; background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); min-height: 450px; }
+        .panel.active { display: block; }
+
+        /* 統計表示スタイル */
+        .stats-bar { display: flex; gap: 10px; margin-bottom: 15px; }
+        .stat-item { flex: 1; background: var(--soft-purple); padding: 10px; border-radius: 12px; text-align: center; }
+        .stat-label { font-size: 10px; color: #777; display: block; margin-bottom: 2px; }
+        .stat-value { font-size: 18px; font-weight: bold; color: var(--primary); }
+
+        .form-group { margin-bottom: 12px; }
+        label { display: block; font-size: 11px; font-weight: bold; margin-bottom: 4px; color: #777; }
+        input, select { width: 100%; padding: 12px; border: 1.5px solid #eee; border-radius: 10px; box-sizing: border-box; font-size: 16px; }
+        
+        .btn-main { width: 100%; padding: 16px; background: var(--primary); color: white; border: none; border-radius: 12px; font-weight: bold; font-size: 16px; cursor: pointer; margin-bottom: 10px; }
+        .btn-sub { width: 100%; padding: 12px; background: #eee; color: #333; border: none; border-radius: 10px; font-size: 14px; cursor: pointer; margin-top: 5px; }
+
+        .word-card { border-bottom: 1px solid #f4f4f4; padding: 15px 0; display: flex; align-items: flex-start; gap: 10px; }
+        .check-box { font-size: 24px; cursor: pointer; filter: grayscale(1); opacity: 0.3; transition: 0.2s; }
+        .check-box.active { filter: grayscale(0); opacity: 1; transform: scale(1.1); }
+        .word-content { flex: 1; }
+        .ex-box { background: #f0f2ff; padding: 10px; border-radius: 8px; margin-top: 8px; font-size: 13px; color: #444; border-left: 3px solid var(--primary); }
+        
+        .tag { display: inline-block; background: var(--soft-purple); color: var(--primary); font-size: 10px; padding: 2px 8px; border-radius: 10px; margin-right: 4px; }
+        .cute-speak-btn { background: var(--soft-purple); border: none; width: 34px; height: 34px; border-radius: 50%; color: var(--primary); cursor: pointer; font-weight: bold; }
+
+        #listen-display { text-align: center; padding: 40px 10px; }
+        .listen-card { background: var(--soft-purple); padding: 30px; border-radius: 25px; margin-bottom: 15px; min-height: 180px; display: flex; flex-direction: column; justify-content: center; position: relative; }
+        .playing-ko { font-size: 28px; font-weight: bold; color: var(--primary); margin-bottom: 15px; word-break: break-all; }
+        .playing-ja { font-size: 18px; color: #666; word-break: break-all; }
+
+        .ls-check-btn { margin-bottom: 25px; padding: 10px; border-radius: 10px; border: 1.5px solid #ddd; background: white; font-size: 13px; font-weight: bold; cursor: pointer; width: 100%; transition: 0.2s; }
+        .ls-check-btn.active { border-color: var(--success); color: var(--success); background: #f0fff4; }
+
+        #toast { position: fixed; top: 40px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.8); color: white; padding: 10px 20px; border-radius: 20px; font-size: 13px; z-index: 3000; opacity: 0; visibility: hidden; transition: 0.3s; }
+        #toast.show { opacity: 1; visibility: visible; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="tabs">
+        <button class="tab-btn active" onclick="showPanel('add', event)">登録</button>
+        <button class="tab-btn" onclick="showPanel('list', event)">単語帳</button>
+        <button class="tab-btn" onclick="showPanel('test', event)">テスト</button>
+        <button class="tab-btn" onclick="showPanel('listen', event)">リスニング</button>
+        <button class="tab-btn" onclick="showPanel('settings', event)">設定</button>
+    </div>
+
+    <div id="panel-add" class="panel active">
+        <div class="form-group"><label>韓国語</label><input type="text" id="in-ko"></div>
+        <div class="form-group"><label>ヘヨ体</label><input type="text" id="in-heyotai"></div>
+        <div class="form-group"><label>意味</label><input type="text" id="in-ja"></div>
+        <div class="form-group"><label>発音</label><input type="text" id="in-pron"></div>
+        <div class="form-group"><label>カテゴリ</label><input type="text" id="in-cat" placeholder="名詞, 旅行"></div>
+        <div class="form-group"><label>例文 (韓国語)</label><input type="text" id="in-ex-ko"></div>
+        <div class="form-group"><label>例文 (日本語)</label><input type="text" id="in-ex-ja"></div>
+        <button class="btn-main" onclick="saveNewWord()">シートへ送信</button>
+    </div>
+
+    <div id="panel-list" class="panel">
+        <div class="stats-bar">
+            <div class="stat-item">
+                <span class="stat-label">登録単語</span>
+                <span id="stat-total" class="stat-value">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">チェック済み</span>
+                <span id="stat-checked" class="stat-value">0</span>
+            </div>
+        </div>
+        <div style="display:flex; gap:5px; margin-bottom:15px;">
+            <select id="filter-cat" onchange="renderList()" style="flex:1;"></select>
+            <select id="sort-order" onchange="renderList()" style="flex:1;"><option value="newest">新着順</option><option value="check">チェック優先</option></select>
+        </div>
+        <div id="list-container"></div>
+    </div>
+
+    <div id="panel-test" class="panel">
+        <div id="test-setup">
+            <div class="form-group"><label>カテゴリ</label><select id="test-cat"></select></div>
+            <div class="form-group"><label>出題範囲</label><select id="test-scope"><option value="all">すべて</option><option value="only_checked">✅ チェックのみ</option></select></div>
+            <div class="form-group"><label>問題数</label><select id="test-count"><option value="10">10問</option><option value="20">20問</option><option value="999">すべて</option></select></div>
+            <button class="btn-main" onclick="startTest()">テスト開始</button>
+        </div>
+        <div id="test-display" style="display:none; text-align:center;">
+            <div id="test-progress" style="font-size:12px; color:#999;"></div>
+            <div id="q-text" style="font-size:32px; font-weight:bold; margin:20px 0;"></div>
+            <div id="a-text" style="display:none; margin-bottom:20px; text-align:left; background:#fff0f1; padding:15px; border-radius:10px; border:1px solid #ffdfe1;"></div>
+            <button class="btn-main" id="ans-btn" style="background:#eee; color:#333;" onclick="showAnswer()">答えを見る</button>
+            <div id="post-ans-actions" style="display:none;">
+                <button class="btn-main" id="next-btn" style="background:var(--success);" onclick="nextQuestion()">次へ</button>
+                <button class="btn-sub" onclick="toggleCurrentCheck()">チェック切り替え</button>
+            </div>
+            <button class="btn-sub" onclick="stopTest()" style="margin-top:20px; opacity:0.5;">戻る</button>
+        </div>
+    </div>
+
+    <div id="panel-listen" class="panel">
+        <div id="listen-setup">
+            <div class="form-group"><label>カテゴリ</label><select id="listen-cat"></select></div>
+            <div class="form-group"><label>対象範囲</label><select id="listen-scope"><option value="all">すべて</option><option value="only_checked">✅ チェックのみ</option></select></div>
+            <div class="form-group"><label>再生数</label><select id="listen-count"><option value="10">10問</option><option value="30">30問</option><option value="999">すべて</option></select></div>
+            <button class="btn-main" onclick="startListening()">リスニング開始</button>
+        </div>
+        <div id="listen-display" style="display:none;">
+            <div id="listen-progress" style="font-size:12px; color:#999; margin-bottom:15px;"></div>
+            <div class="listen-card">
+                <div id="ls-ko" class="playing-ko">-</div>
+                <div id="ls-ja" class="playing-ja">-</div>
+            </div>
+            <button id="ls-quick-check" class="ls-check-btn" onclick="toggleCurrentCheck()">✅ チェック済み</button>
+            <button class="btn-main" style="background:var(--accent);" onclick="stopListening()">停止</button>
+        </div>
+    </div>
+
+    <div id="panel-settings" class="panel">
+        <div class="form-group"><label>GAS URL</label><input type="text" id="conf-gas-url"></div>
+        <button class="btn-main" onclick="saveConfig()">保存</button>
+        <button class="btn-sub" onclick="syncFromSheet()">同期</button>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+    let words = JSON.parse(localStorage.getItem('k_vocab_v1')) || [];
+    let checkedIds = JSON.parse(localStorage.getItem('k_checked_ids')) || [];
+    let testList = [];
+    let currentIdx = 0;
+    let isListening = false;
+
+    window.onload = () => {
+        document.getElementById('conf-gas-url').value = localStorage.getItem('conf_gas_url') || '';
+        renderList(); updateFilterOptions();
+    };
+
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        t.innerText = msg; t.classList.add('show');
+        setTimeout(() => t.classList.remove('show'), 2000);
+    }
+
+    function showPanel(name, event) {
+        if(isListening && name !== 'listen') { if(!confirm("リスニングを停止しますか？")) return; stopListening(); }
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('panel-' + name).classList.add('active');
+        if(event) event.currentTarget.classList.add('active');
+        if(name === 'list') renderList();
+        if(name === 'test' || name === 'listen') updateFilterOptions();
+    }
+
+    function saveConfig() { localStorage.setItem('conf_gas_url', document.getElementById('conf-gas-url').value.trim()); showToast("保存完了"); }
+
+    function speak(text, lang = 'ko-KR') {
+        return new Promise((resolve) => {
+            if (!window.speechSynthesis) return resolve();
+            window.speechSynthesis.cancel();
+            const uttr = new SpeechSynthesisUtterance(text);
+            const voices = window.speechSynthesis.getVoices();
+            const voice = voices.find(v => v.lang.startsWith(lang) && v.name.includes('Google')) || voices.find(v => v.lang.startsWith(lang));
+            if (voice) uttr.voice = voice;
+            uttr.lang = lang; uttr.rate = 0.9;
+            uttr.onend = () => resolve();
+            window.speechSynthesis.speak(uttr);
+            setTimeout(resolve, 8000);
+        });
+    }
+
+    async function syncFromSheet() {
+        const url = localStorage.getItem('conf_gas_url');
+        if(!url) return alert("URL未設定");
+        showToast("同期中...");
+        try {
+            const r = await fetch(url);
+            const data = await r.json();
+            words = data.slice(1).map(row => ({
+                no: row[0], korean: row[1], heyotai: row[2], meaning: row[3],
+                pron: row[4], cats: (row[5] || '未分類').toString().split(/[,|]/).map(s => s.trim()),
+                ex_ko: row[6] || '', ex_ja: row[7] || ''
+            })).filter(w => w.korean);
+            localStorage.setItem('k_vocab_v1', JSON.stringify(words));
+            renderList(); updateFilterOptions(); showToast("同期成功");
+        } catch (e) { alert("同期失敗"); }
+    }
+
+    function updateFilterOptions() {
+        const allCats = [...new Set(words.flatMap(w => w.cats))].filter(Boolean);
+        const options = '<option value="">すべてのカテゴリ</option>' + allCats.map(c => `<option value="${c}">${c}</option>`).join('');
+        ['filter-cat', 'test-cat', 'listen-cat'].forEach(id => {
+            const el = document.getElementById(id); if(el) { const cur = el.value; el.innerHTML = options; el.value = cur; }
+        });
+    }
+
+    function renderList() {
+        const cat = document.getElementById('filter-cat').value;
+        const sort = document.getElementById('sort-order').value;
+        
+        // 絞り込み
+        let display = words.filter(w => !cat || w.cats.includes(cat));
+
+        // 統計の計算（絞り込み後の数値）
+        document.getElementById('stat-total').innerText = display.length;
+        document.getElementById('stat-checked').innerText = display.filter(w => checkedIds.includes(w.no.toString())).length;
+
+        // ソート
+        if(sort === 'check') display.sort((a,b) => (checkedIds.includes(a.no.toString())?0:1) - (checkedIds.includes(b.no.toString())?0:1));
+        else display.sort((a,b) => b.no - a.no);
+
+        document.getElementById('list-container').innerHTML = display.map(w => `
+            <div class="word-card">
+                <div class="check-box ${checkedIds.includes(w.no.toString()) ? 'active' : ''}" onclick="toggleCheck('${w.no}')">✅</div>
+                <div class="word-content">
+                    <div style="font-weight:bold; color:var(--primary); font-size:1.1rem;">${w.korean}</div>
+                    <div style="font-size:13px; color:#666;">${w.meaning} <span style="color:#aaa; font-size:11px;">[${w.pron}]</span></div>
+                    <div style="font-size:12px; color:var(--accent);">${w.heyotai}</div>
+                    ${(w.ex_ko||w.ex_ja)?`<div class="ex-box">例文：<b>${w.ex_ko}</b><br>訳：<b>${w.ex_ja}</b></div>`:''}
+                </div>
+                <button class="cute-speak-btn" onclick="speak('${w.korean}')">♪</button>
+            </div>`).join('');
+    }
+
+    function toggleCheck(no) {
+        const sid = no.toString();
+        const i = checkedIds.indexOf(sid);
+        if(i > -1) checkedIds.splice(i,1); else checkedIds.push(sid);
+        localStorage.setItem('k_checked_ids', JSON.stringify(checkedIds));
+        renderList();
+        updateListenCheckUI(no);
+    }
+
+    function updateListenCheckUI(no) {
+        const btn = document.getElementById('ls-quick-check');
+        if(!btn || !testList[currentIdx] || testList[currentIdx].no !== no) return;
+        const isChecked = checkedIds.includes(no.toString());
+        btn.innerText = isChecked ? "✅ チェック済み" : "⬜ 未チェック";
+        btn.className = isChecked ? "ls-check-btn active" : "ls-check-btn";
+    }
+
+    // --- テスト・リスニング用ロジック（前回同様） ---
+    function startTest() {
+        const cat = document.getElementById('test-cat').value;
+        const scope = document.getElementById('test-scope').value;
+        const count = parseInt(document.getElementById('test-count').value);
+        let filtered = words.filter(w => !cat || w.cats.includes(cat));
+        if(scope === "only_checked") filtered = filtered.filter(w => checkedIds.includes(w.no.toString()));
+        testList = filtered.sort(() => Math.random() - 0.5).slice(0, count);
+        if(!testList.length) return alert("対象なし");
+        currentIdx = 0; document.getElementById('test-setup').style.display = 'none'; document.getElementById('test-display').style.display = 'block'; showQuestion();
+    }
+    function showQuestion() {
+        const q = testList[currentIdx];
+        document.getElementById('test-progress').innerText = `${currentIdx + 1} / ${testList.length}`;
+        document.getElementById('q-text').innerText = q.korean;
+        document.getElementById('a-text').style.display = 'none'; document.getElementById('ans-btn').style.display = 'block'; document.getElementById('post-ans-actions').style.display = 'none';
+        speak(q.korean);
+    }
+    function showAnswer() {
+        const q = testList[currentIdx];
+        document.getElementById('a-text').innerHTML = `意味：<b style="color:var(--accent)">${q.meaning}</b><br>ヘヨ体：<b style="color:var(--accent)">${q.heyotai}</b><br>発音：<b style="color:var(--accent)">${q.pron}</b>`;
+        document.getElementById('a-text').style.display = 'block'; document.getElementById('ans-btn').style.display = 'none'; document.getElementById('post-ans-actions').style.display = 'block';
+    }
+    function nextQuestion() { currentIdx++; if(currentIdx < testList.length) showQuestion(); else { alert("終了！"); stopTest(); } }
+    function stopTest() { document.getElementById('test-setup').style.display = 'block'; document.getElementById('test-display').style.display = 'none'; }
+    function toggleCurrentCheck() { toggleCheck(testList[currentIdx].no); showToast("切替成功"); }
+
+    async function startListening() {
+        const cat = document.getElementById('listen-cat').value;
+        const scope = document.getElementById('listen-scope').value;
+        const count = parseInt(document.getElementById('listen-count').value);
+        let filtered = words.filter(w => !cat || w.cats.includes(cat));
+        if(scope === "only_checked") filtered = filtered.filter(w => checkedIds.includes(w.no.toString()));
+        testList = filtered.sort(() => Math.random() - 0.5).slice(0, count);
+        if(!testList.length) return alert("対象なし");
+        currentIdx = 0; isListening = true;
+        document.getElementById('listen-setup').style.display = 'none';
+        document.getElementById('listen-display').style.display = 'block';
+        loopListening();
+    }
+
+    async function loopListening() {
+        const gap = 700;
+        while(isListening && currentIdx < testList.length) {
+            const q = testList[currentIdx];
+            document.getElementById('listen-progress').innerText = `再生中: ${currentIdx + 1} / ${testList.length}`;
+            updateListenCheckUI(q.no);
+            document.getElementById('ls-ko').innerText = q.korean;
+            document.getElementById('ls-ja').innerText = "-";
+            await speak(q.korean, 'ko-KR'); await new Promise(r => setTimeout(r, gap)); 
+            if(!isListening) break;
+            document.getElementById('ls-ja').innerText = q.meaning;
+            await speak(q.meaning, 'ja-JP'); await new Promise(r => setTimeout(r, gap));
+            if(!isListening) break;
+            if(q.ex_ko) {
+                document.getElementById('ls-ko').innerText = q.ex_ko;
+                await speak(q.ex_ko, 'ko-KR'); await new Promise(r => setTimeout(r, gap));
+            }
+            if(!isListening) break;
+            if(q.ex_ja) {
+                document.getElementById('ls-ja').innerText = q.ex_ja;
+                await speak(q.ex_ja, 'ja-JP'); await new Promise(r => setTimeout(r, gap * 2)); 
+            }
+            currentIdx++;
+            if(currentIdx >= testList.length) {
+                if(confirm("リピートしますか？")) { currentIdx = 0; } else { stopListening(); }
+            }
+        }
+    }
+
+    function stopListening() { isListening = false; window.speechSynthesis.cancel(); document.getElementById('listen-setup').style.display = 'block'; document.getElementById('listen-display').style.display = 'none'; }
+
+    async function saveNewWord() {
+        const url = localStorage.getItem('conf_gas_url'); if(!url) return alert("URL未設定");
+        const data = {
+            no: Date.now(), korean: document.getElementById('in-ko').value.trim(),
+            heyotai: document.getElementById('in-heyotai').value.trim(),
+            meaning: document.getElementById('in-ja').value.trim(),
+            pron: document.getElementById('in-pron').value.trim(),
+            category: document.getElementById('in-cat').value.trim(),
+            ex_ko: document.getElementById('in-ex-ko').value.trim(),
+            ex_ja: document.getElementById('in-ex-ja').value.trim()
+        };
+        if(!data.korean || !data.meaning) return alert("入力不足");
+        showToast("送信中...");
+        try {
+            await fetch(url, { method: "POST", mode: "no-cors", body: JSON.stringify(data) });
+            showToast("送信成功");
+            ['in-ko','in-heyotai','in-ja','in-pron','in-cat','in-ex-ko','in-ex-ja'].forEach(id => document.getElementById(id).value = '');
+        } catch (e) { alert("エラー"); }
+    }
+</script>
+</body>
+</html>
