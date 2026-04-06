@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>K-Vocab Pro (Stats & Audio)</title>
+    <title>K-Vocab Pro</title>
     <style>
         :root { --primary: #5c67f2; --accent: #ff4757; --success: #2ed573; --bg: #f8f9fa; --soft-purple: #eef1ff; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 10px; color: #333; }
@@ -16,7 +16,6 @@
         .panel { display: none; background: white; padding: 20px; border-radius: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); min-height: 450px; }
         .panel.active { display: block; }
 
-        /* 統計表示スタイル */
         .stats-bar { display: flex; gap: 10px; margin-bottom: 15px; }
         .stat-item { flex: 1; background: var(--soft-purple); padding: 10px; border-radius: 12px; text-align: center; }
         .stat-label { font-size: 10px; color: #777; display: block; margin-bottom: 2px; }
@@ -35,7 +34,6 @@
         .word-content { flex: 1; }
         .ex-box { background: #f0f2ff; padding: 10px; border-radius: 8px; margin-top: 8px; font-size: 13px; color: #444; border-left: 3px solid var(--primary); }
         
-        .tag { display: inline-block; background: var(--soft-purple); color: var(--primary); font-size: 10px; padding: 2px 8px; border-radius: 10px; margin-right: 4px; }
         .cute-speak-btn { background: var(--soft-purple); border: none; width: 34px; height: 34px; border-radius: 50%; color: var(--primary); cursor: pointer; font-weight: bold; }
 
         #listen-display { text-align: center; padding: 40px 10px; }
@@ -74,14 +72,8 @@
 
     <div id="panel-list" class="panel">
         <div class="stats-bar">
-            <div class="stat-item">
-                <span class="stat-label">登録単語</span>
-                <span id="stat-total" class="stat-value">0</span>
-            </div>
-            <div class="stat-item">
-                <span class="stat-label">チェック済み</span>
-                <span id="stat-checked" class="stat-value">0</span>
-            </div>
+            <div class="stat-item"><span class="stat-label">登録単語</span><span id="stat-total" class="stat-value">0</span></div>
+            <div class="stat-item"><span class="stat-label">チェック済み</span><span id="stat-checked" class="stat-value">0</span></div>
         </div>
         <div style="display:flex; gap:5px; margin-bottom:15px;">
             <select id="filter-cat" onchange="renderList()" style="flex:1;"></select>
@@ -210,18 +202,11 @@
     function renderList() {
         const cat = document.getElementById('filter-cat').value;
         const sort = document.getElementById('sort-order').value;
-        
-        // 絞り込み
         let display = words.filter(w => !cat || w.cats.includes(cat));
-
-        // 統計の計算（絞り込み後の数値）
         document.getElementById('stat-total').innerText = display.length;
         document.getElementById('stat-checked').innerText = display.filter(w => checkedIds.includes(w.no.toString())).length;
-
-        // ソート
         if(sort === 'check') display.sort((a,b) => (checkedIds.includes(a.no.toString())?0:1) - (checkedIds.includes(b.no.toString())?0:1));
         else display.sort((a,b) => b.no - a.no);
-
         document.getElementById('list-container').innerHTML = display.map(w => `
             <div class="word-card">
                 <div class="check-box ${checkedIds.includes(w.no.toString()) ? 'active' : ''}" onclick="toggleCheck('${w.no}')">✅</div>
@@ -252,7 +237,7 @@
         btn.className = isChecked ? "ls-check-btn active" : "ls-check-btn";
     }
 
-    // --- テスト・リスニング用ロジック（前回同様） ---
+    // --- テスト ---
     function startTest() {
         const cat = document.getElementById('test-cat').value;
         const scope = document.getElementById('test-scope').value;
@@ -270,15 +255,30 @@
         document.getElementById('a-text').style.display = 'none'; document.getElementById('ans-btn').style.display = 'block'; document.getElementById('post-ans-actions').style.display = 'none';
         speak(q.korean);
     }
+    
+    // 【修正ポイント】答えの中に例文を表示
     function showAnswer() {
         const q = testList[currentIdx];
-        document.getElementById('a-text').innerHTML = `意味：<b style="color:var(--accent)">${q.meaning}</b><br>ヘヨ体：<b style="color:var(--accent)">${q.heyotai}</b><br>発音：<b style="color:var(--accent)">${q.pron}</b>`;
+        const exHtml = (q.ex_ko || q.ex_ja) 
+            ? `<div style="margin-top:10px; padding-top:10px; border-top:1px dashed #ffdfe1; font-size:13px;">
+                <div style="color:#555;">例文: <b>${q.ex_ko || ''}</b></div>
+                <div style="color:#888;">訳: ${q.ex_ja || ''}</div>
+               </div>` 
+            : '';
+        document.getElementById('a-text').innerHTML = `
+            <div>意味：<b style="color:var(--accent)">${q.meaning}</b></div>
+            <div style="font-size:14px; margin-top:5px;">ヘヨ体：<b>${q.heyotai || '-'}</b></div>
+            <div style="font-size:14px;">発音：<b>${q.pron || '-'}</b></div>
+            ${exHtml}
+        `;
         document.getElementById('a-text').style.display = 'block'; document.getElementById('ans-btn').style.display = 'none'; document.getElementById('post-ans-actions').style.display = 'block';
     }
+
     function nextQuestion() { currentIdx++; if(currentIdx < testList.length) showQuestion(); else { alert("終了！"); stopTest(); } }
     function stopTest() { document.getElementById('test-setup').style.display = 'block'; document.getElementById('test-display').style.display = 'none'; }
     function toggleCurrentCheck() { toggleCheck(testList[currentIdx].no); showToast("切替成功"); }
 
+    // --- リスニング ---
     async function startListening() {
         const cat = document.getElementById('listen-cat').value;
         const scope = document.getElementById('listen-scope').value;
@@ -288,11 +288,9 @@
         testList = filtered.sort(() => Math.random() - 0.5).slice(0, count);
         if(!testList.length) return alert("対象なし");
         currentIdx = 0; isListening = true;
-        document.getElementById('listen-setup').style.display = 'none';
-        document.getElementById('listen-display').style.display = 'block';
+        document.getElementById('listen-setup').style.display = 'none'; document.getElementById('listen-display').style.display = 'block';
         loopListening();
     }
-
     async function loopListening() {
         const gap = 700;
         while(isListening && currentIdx < testList.length) {
@@ -316,12 +314,9 @@
                 await speak(q.ex_ja, 'ja-JP'); await new Promise(r => setTimeout(r, gap * 2)); 
             }
             currentIdx++;
-            if(currentIdx >= testList.length) {
-                if(confirm("リピートしますか？")) { currentIdx = 0; } else { stopListening(); }
-            }
+            if(currentIdx >= testList.length) { if(confirm("リピートしますか？")) { currentIdx = 0; } else { stopListening(); } }
         }
     }
-
     function stopListening() { isListening = false; window.speechSynthesis.cancel(); document.getElementById('listen-setup').style.display = 'block'; document.getElementById('listen-display').style.display = 'none'; }
 
     async function saveNewWord() {
