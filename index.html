@@ -201,21 +201,34 @@
 }
 
     async function syncFromSheet() {
-        const url = localStorage.getItem('conf_gas_url');
-        if(!url) return alert("URL未設定");
-        showToast("同期中...");
-        try {
-            const r = await fetch(url);
-            const data = await r.json();
-            words = data.slice(1).map(row => ({
-                no: row[0].toString(), korean: row[1], heyotai: row[2], meaning: row[3],
-                pron: row[4], cats: (row[5] || '未分類').toString().split(/[,|]/).map(s => s.trim()),
-                ex_ko: row[6] || '', ex_ja: row[7] || ''
-            })).filter(w => w.korean);
-            localStorage.setItem('k_vocab_v1', JSON.stringify(words));
-            renderList(); updateFilterOptions(); showToast("同期成功");
-        } catch (e) { alert("同期失敗"); }
-    }
+    const url = localStorage.getItem('conf_gas_url');
+    if(!url) return alert("URL未設定");
+    showToast("同期中...");
+    try {
+        const r = await fetch(url);
+        const data = await r.json();
+        
+        // 1. 単語データの更新
+        words = data.slice(1).map(row => ({
+            no: row[0].toString(), korean: row[1], heyotai: row[2], meaning: row[3],
+            pron: row[4], cats: (row[5] || '未分類').toString().split(/[,|]/).map(s => s.trim()),
+            ex_ko: row[6] || '', ex_ja: row[7] || ''
+        })).filter(w => w.korean);
+        localStorage.setItem('k_vocab_v1', JSON.stringify(words));
+
+        // 2. I列(インデックス8)からフラグを復元
+        wordStatus = {}; // 一旦リセットして最新化
+        data.slice(1).forEach(row => {
+            const id = row[0].toString();
+            const val = row[8] || ""; // I列
+            if (val.includes("できた")) wordStatus[id] = "learned";
+            else if (val.includes("要復習")) wordStatus[id] = "review";
+        });
+        localStorage.setItem('k_word_status_v2', JSON.stringify(wordStatus));
+
+        renderList(); updateFilterOptions(); showToast("同期成功");
+    } catch (e) { alert("同期失敗"); }
+}
 
     function updateFilterOptions() {
         const allCats = [...new Set(words.flatMap(w => w.cats))].filter(Boolean);
@@ -340,12 +353,43 @@
         document.getElementById('post-ans-actions').style.display = 'block';
     }
 
+        // クラウド同期関数（一括送信）
+    async function autoBackupToSheet() {
+        const url = localStorage.getItem('conf_gas_url');
+        if (!url) return;
+
+        const backupData = {
+            type: "backup",
+            data: JSON.stringify(wordStatus) // 全件のステータス
+        };
+
+        try {
+            // バックグラウンドで送信
+            fetch(url, {
+                method: "POST",
+                mode: "no-cors",
+                body: JSON.stringify(backupData)
+            });
+            showToast("クラウド同期完了");
+        } catch (e) {
+            console.error("Backup Error:", e);
+        }
+    }
+
+    // テスト終了判定部分の差し替え
     function setResultAndNext(status) {
         const q = testList[currentIdx];
         wordStatus[q.no] = status;
         localStorage.setItem('k_word_status_v2', JSON.stringify(wordStatus));
+        
         currentIdx++;
-        if(currentIdx < testList.length) showQuestion(); else { alert("終了！"); stopTest(); }
+        if (currentIdx < testList.length) {
+            showQuestion();
+        } else {
+            autoBackupToSheet(); // ★ここで一括バックアップを実行
+            alert("テスト終了！スプレッドシートを更新しました。");
+            stopTest();
+        }
     }
 
     function stopTest() { document.getElementById('test-setup').style.display = 'block'; document.getElementById('test-display').style.display = 'none'; renderList(); }
