@@ -89,6 +89,12 @@
             <div class="stat-item"><span class="stat-label">できた🌸</span><span id="stat-learned" class="stat-value" style="color:var(--success)">0</span></div>
             <div class="stat-item"><span class="stat-label">要復習✍️</span><span id="stat-checked" class="stat-value" style="color:var(--warning)">0</span></div>
         </div>
+        <div style="position: relative; margin-bottom: 15px;">
+            <input type="text" id="search-input" oninput="renderList()" placeholder="🔍 単語・意味・例文で検索..." 
+           style="width:100%; padding:12px 40px 12px 15px; border:1.5px solid #eee; border-radius:12px; box-sizing:border-box; font-size:16px;">
+             <span id="search-clear" onclick="document.getElementById('search-input').value='';renderList();" 
+          style="position:absolute; right:12px; top:50%; transform:translateY(-50%); cursor:pointer; color:#ccc; font-size:22px; display:none;">×</span>
+        </div>
         <div style="display:flex; gap:5px; margin-bottom:15px;">
             <select id="filter-cat" onchange="renderList()" style="flex:1;"></select>
             <select id="sort-order" onchange="renderList()" style="flex:1;"><option value="newest">新着順</option><option value="status">要復習</option></select>
@@ -231,71 +237,111 @@
         });
     }
 
-    function renderList() {
-        const cat = document.getElementById('filter-cat').value;
-        const sort = document.getElementById('sort-order').value;
-        let display = words.filter(w => !cat || w.cats.includes(cat));
+function renderList() {
+    // 1. 要素の取得（存在確認付き）
+    const catEl = document.getElementById('filter-cat');
+    const sortEl = document.getElementById('sort-order');
+    const searchEl = document.getElementById('search-input');
+    const container = document.getElementById('list-container');
 
-        let countNew = 0, countLearned = 0, countReview = 0;
-        display.forEach(w => {
-            const s = wordStatus[w.no];
-            if(s === 'learned') countLearned++;
-            else if(s === 'review') countReview++;
-            else countNew++;
-        });
-        document.getElementById('stat-new').innerText = countNew;
-        document.getElementById('stat-learned').innerText = countLearned;
-        document.getElementById('stat-checked').innerText = countReview;
+    if (!container) return;
 
-        if(sort === 'status') {
-            const order = { 'review': 0, 'new': 1, 'learned': 2 };
-            display.sort((a,b) => (order[wordStatus[a.no]||'new']) - (order[wordStatus[b.no]||'new']));
-        } else display.sort((a,b) => b.no - a.no);
+    const cat = catEl ? catEl.value : '';
+    const sort = sortEl ? sortEl.value : 'newest';
+    // 検索ワードを小文字・トリム
+    const searchWord = searchEl ? searchEl.value.toLowerCase().trim() : '';
+    
+    // クリアボタン表示制御
+    const clearBtn = document.getElementById('search-clear');
+    if (clearBtn) clearBtn.style.display = searchWord ? 'block' : 'none';
 
-        document.getElementById('list-container').innerHTML = display.map(w => {
-            const status = wordStatus[w.no] || 'new';
-            const config = {
-                'new': { icon: '🆕', class: 'bg-new', text: '未設定' },
-                'learned': { icon: '🌸', class: 'bg-know', text: 'できた' },
-                'review': { icon: '✍️', class: 'bg-review', text: '要復習' }
-            }[status];
+    // 2. フィルタリング（String() で囲むことで数値エラーを完全回避）
+    let display = words.filter(w => {
+        // カテゴリ一致チェック
+        const catMatch = !cat || (w.cats && w.cats.includes(cat));
+        
+        // 検索一致チェック（String() ですべて文字列に変換してから比較）
+        const searchMatch = !searchWord || 
+            String(w.korean || '').toLowerCase().includes(searchWord) || 
+            String(w.meaning || '').toLowerCase().includes(searchWord) || 
+            String(w.ex_ko || '').toLowerCase().includes(searchWord) ||
+            String(w.pron || '').toLowerCase().includes(searchWord);
 
-            // 複数例文のHTML生成
-            const exKos = w.ex_ko ? w.ex_ko.split('\n') : [];
-            const exJas = w.ex_ja ? w.ex_ja.split('\n') : [];
-            let exHtml = '';
-            if(exKos.length > 0) {
-                exHtml = '<div class="ex-box">';
-                exKos.forEach((ko, i) => {
-                    if(ko || exJas[i]) {
-                        exHtml += `
-                        <div class="ex-item">
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <span style="font-weight:bold; flex:1;">${ko || ''}</span>
-                                <button class="cute-speak-btn" style="width:24px; height:24px; font-size:10px;" onclick="speak(\`${ko.replace(/`/g, "\\`")}\`)">♪</button>
-                            </div>
-                            <div style="font-size:12px; color:#666;">${exJas[i] || ''}</div>
-                        </div>`;
-                    }
-                });
-                exHtml += '</div>';
-            }
+        return catMatch && searchMatch;
+    });
 
-            return `
-            <div class="word-card">
-                <div class="status-badge" onclick="cycleStatus('${w.no}')">${config.icon}</div>
-                <div class="word-content">
-                    <div style="font-weight:bold; color:var(--primary); font-size:1.1rem;">
-                        ${w.korean}<span class="badge-label ${config.class}">${config.text}</span>
-                    </div>
-                    <div style="font-size:13px; color:#666;">${w.meaning} <span style="color:#aaa; font-size:11px;">[${w.pron}]</span></div>
-                    <div style="font-size:12px; color:var(--accent);">${w.heyotai}</div>
-                    ${exHtml}
-                </div>
-                <button class="cute-speak-btn" onclick="speak('${w.korean}')">♪</button>
-            </div>`;
-        }).join('');
+    // 3. 統計の更新
+    let countNew = 0, countLearned = 0, countReview = 0;
+    display.forEach(w => {
+        const s = wordStatus[w.no];
+        if(s === 'learned') countLearned++;
+        else if(s === 'review') countReview++;
+        else countNew++;
+    });
+    
+    const sn = document.getElementById('stat-new');
+    const sl = document.getElementById('stat-learned');
+    const sc = document.getElementById('stat-checked');
+    if(sn) sn.innerText = countNew;
+    if(sl) sl.innerText = countLearned;
+    if(sc) sc.innerText = countReview;
+
+    // 4. ソート処理
+    if(sort === 'status') {
+        const order = { 'review': 0, 'new': 1, 'learned': 2 };
+        display.sort((a,b) => (order[wordStatus[a.no]||'new']) - (order[wordStatus[b.no]||'new']));
+    } else {
+        // IDを数値として比較して降順（新着順）
+        display.sort((a,b) => Number(b.no || 0) - Number(a.no || 0));
     }
+
+    // 5. HTML出力
+    if (display.length === 0) {
+        container.innerHTML = `<div style="text-align:center; padding:50px 10px; color:#999;">一致する単語がありません</div>`;
+        return;
+    }
+
+    container.innerHTML = display.map(w => {
+        const status = wordStatus[w.no] || 'new';
+        const config = {
+            'new': { icon: '🆕', class: 'bg-new', text: '未設定' },
+            'learned': { icon: '🌸', class: 'bg-know', text: 'できた' },
+            'review': { icon: '✍️', class: 'bg-review', text: '要復習' }
+        }[status];
+
+        const exKos = (w.ex_ko || '').split('\n').filter(s => s.trim());
+        const exJas = (w.ex_ja || '').split('\n');
+        let exHtml = '';
+        if(exKos.length > 0) {
+            exHtml = '<div class="ex-box">';
+            exKos.forEach((ko, i) => {
+                exHtml += `
+                <div class="ex-item">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-weight:bold; flex:1;">${ko}</span>
+                        <button class="cute-speak-btn" style="width:24px; height:24px; font-size:10px;" onclick="speak(\`${ko.replace(/`/g, "\\`").replace(/\$/g, "\\$")}\`)">♪</button>
+                    </div>
+                    <div style="font-size:12px; color:#666;">${exJas[i] || ''}</div>
+                </div>`;
+            });
+            exHtml += '</div>';
+        }
+
+        return `
+        <div class="word-card">
+            <div class="status-badge" onclick="cycleStatus('${w.no}')">${config.icon}</div>
+            <div class="word-content">
+                <div style="font-weight:bold; color:var(--primary); font-size:1.1rem;">
+                    ${w.korean}<span class="badge-label ${config.class}">${config.text}</span>
+                </div>
+                <div style="font-size:13px; color:#666;">${w.meaning} <span style="color:#aaa; font-size:11px;">[${w.pron || ''}]</span></div>
+                <div style="font-size:12px; color:var(--accent);">${w.heyotai || ''}</div>
+                ${exHtml}
+            </div>
+            <button class="cute-speak-btn" onclick="speak('${w.korean}')">♪</button>
+        </div>`;
+    }).join('');
+}
 
     function cycleStatus(no) {
         if(!no && testList[currentIdx]) no = testList[currentIdx].no;
