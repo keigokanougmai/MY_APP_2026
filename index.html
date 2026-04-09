@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>K-Vocab Pro (3-Status Mode)</title>
+    <title>K-Vocab Pro (Multi-Ex Mode)</title>
     <style>
         :root { --primary: #5c67f2; --accent: #ff4757; --success: #2ed573; --bg: #f8f9fa; --soft-purple: #eef1ff; --warning: #ffa502; --neutral: #a0a0a0; }
         body { font-family: -apple-system, sans-serif; background: var(--bg); margin: 0; padding: 10px; color: #333; }
@@ -23,7 +23,8 @@
         .stat-value { font-size: 14px; font-weight: bold; color: var(--primary); }
         .form-group { margin-bottom: 12px; }
         label { display: block; font-size: 11px; font-weight: bold; margin-bottom: 4px; color: #777; }
-        input, select { width: 100%; padding: 12px; border: 1.5px solid #eee; border-radius: 10px; box-sizing: border-box; font-size: 16px; }
+        input, select, textarea { width: 100%; padding: 12px; border: 1.5px solid #eee; border-radius: 10px; box-sizing: border-box; font-size: 16px; font-family: inherit; }
+        textarea { height: 80px; resize: none; }
         
         /* ボタン */
         .btn-main { width: 100%; padding: 16px; background: var(--primary); color: white; border: none; border-radius: 12px; font-weight: bold; font-size: 16px; cursor: pointer; margin-bottom: 10px; }
@@ -45,6 +46,8 @@
         .bg-know { background: var(--success); }
         .bg-review { background: var(--warning); }
         .ex-box { background: #f0f2ff; padding: 10px; border-radius: 8px; margin-top: 8px; font-size: 13px; color: #444; border-left: 3px solid var(--primary); }
+        .ex-item { margin-bottom: 8px; }
+        .ex-item:last-child { margin-bottom: 0; }
         .cute-speak-btn { background: var(--soft-purple); border: none; width: 34px; height: 34px; border-radius: 50%; color: var(--primary); cursor: pointer; font-weight: bold; }
 
         #listen-display { text-align: center; padding: 20px 10px; }
@@ -75,8 +78,8 @@
         <div class="form-group"><label>意味</label><input type="text" id="in-ja"></div>
         <div class="form-group"><label>発音</label><input type="text" id="in-pron"></div>
         <div class="form-group"><label>カテゴリ</label><input type="text" id="in-cat" placeholder="名詞, 旅行"></div>
-        <div class="form-group"><label>例文 (韓国語)</label><input type="text" id="in-ex-ko"></div>
-        <div class="form-group"><label>例文 (日本語)</label><input type="text" id="in-ex-ja"></div>
+        <div class="form-group"><label>例文 (韓国語) ※複数可：改行で区切る</label><textarea id="in-ex-ko"></textarea></div>
+        <div class="form-group"><label>例文 (日本語) ※対応させて改行</label><textarea id="in-ex-ja"></textarea></div>
         <button class="btn-main" onclick="saveNewWord()">シートへ送信</button>
     </div>
 
@@ -147,7 +150,6 @@
 
 <script>
     let words = JSON.parse(localStorage.getItem('k_vocab_v1')) || [];
-    // ステータス管理をオブジェクト形式に変更 { "id": "learned" | "review" }
     let wordStatus = JSON.parse(localStorage.getItem('k_word_status_v2')) || {};
     let testList = [];
     let currentIdx = 0;
@@ -178,57 +180,48 @@
     function saveConfig() { localStorage.setItem('conf_gas_url', document.getElementById('conf-gas-url').value.trim()); showToast("保存完了"); }
 
     function speak(text, lang = 'ko-KR') {
-    return new Promise((resolve) => {
-        if (!window.speechSynthesis) return resolve();
-        window.speechSynthesis.cancel();
-        
-        const uttr = new SpeechSynthesisUtterance(text);
-        
-        // 【以前のコードから復活】高品質な音声エンジンを選択するロジック
-        const voices = window.speechSynthesis.getVoices();
-        const voice = voices.find(v => v.lang.startsWith(lang) && v.name.includes('Google')) 
-                   || voices.find(v => v.lang.startsWith(lang) && v.name.includes('Siri')) // iOS用
-                   || voices.find(v => v.lang.startsWith(lang));
-        
-        if (voice) uttr.voice = voice;
-        uttr.lang = lang;
-        uttr.rate = 0.9;
-        
-        uttr.onend = () => resolve();
-        window.speechSynthesis.speak(uttr);
-        setTimeout(resolve, 8000); // 念のためのタイムアウト
-    });
-}
+        return new Promise((resolve) => {
+            if (!window.speechSynthesis || !text) return resolve();
+            window.speechSynthesis.cancel();
+            const uttr = new SpeechSynthesisUtterance(text);
+            const voices = window.speechSynthesis.getVoices();
+            const voice = voices.find(v => v.lang.startsWith(lang) && v.name.includes('Google')) 
+                       || voices.find(v => v.lang.startsWith(lang) && v.name.includes('Siri'))
+                       || voices.find(v => v.lang.startsWith(lang));
+            if (voice) uttr.voice = voice;
+            uttr.lang = lang;
+            uttr.rate = 0.9;
+            uttr.onend = () => resolve();
+            window.speechSynthesis.speak(uttr);
+            setTimeout(resolve, 8000);
+        });
+    }
 
     async function syncFromSheet() {
-    const url = localStorage.getItem('conf_gas_url');
-    if(!url) return alert("URL未設定");
-    showToast("同期中...");
-    try {
-        const r = await fetch(url);
-        const data = await r.json();
-        
-        // 1. 単語データの更新
-        words = data.slice(1).map(row => ({
-            no: row[0].toString(), korean: row[1], heyotai: row[2], meaning: row[3],
-            pron: row[4], cats: (row[5] || '未分類').toString().split(/[,|]/).map(s => s.trim()),
-            ex_ko: row[6] || '', ex_ja: row[7] || ''
-        })).filter(w => w.korean);
-        localStorage.setItem('k_vocab_v1', JSON.stringify(words));
+        const url = localStorage.getItem('conf_gas_url');
+        if(!url) return alert("URL未設定");
+        showToast("同期中...");
+        try {
+            const r = await fetch(url);
+            const data = await r.json();
+            words = data.slice(1).map(row => ({
+                no: row[0].toString(), korean: row[1], heyotai: row[2], meaning: row[3],
+                pron: row[4], cats: (row[5] || '未分類').toString().split(/[,|]/).map(s => s.trim()),
+                ex_ko: row[6] || '', ex_ja: row[7] || ''
+            })).filter(w => w.korean);
+            localStorage.setItem('k_vocab_v1', JSON.stringify(words));
 
-        // 2. I列(インデックス8)からフラグを復元
-        wordStatus = {}; // 一旦リセットして最新化
-        data.slice(1).forEach(row => {
-            const id = row[0].toString();
-            const val = row[8] || ""; // I列
-            if (val.includes("できた")) wordStatus[id] = "learned";
-            else if (val.includes("要復習")) wordStatus[id] = "review";
-        });
-        localStorage.setItem('k_word_status_v2', JSON.stringify(wordStatus));
-
-        renderList(); updateFilterOptions(); showToast("同期成功");
-    } catch (e) { alert("同期失敗"); }
-}
+            wordStatus = {};
+            data.slice(1).forEach(row => {
+                const id = row[0].toString();
+                const val = row[8] || "";
+                if (val.includes("できた")) wordStatus[id] = "learned";
+                else if (val.includes("要復習")) wordStatus[id] = "review";
+            });
+            localStorage.setItem('k_word_status_v2', JSON.stringify(wordStatus));
+            renderList(); updateFilterOptions(); showToast("同期成功");
+        } catch (e) { alert("同期失敗"); }
+    }
 
     function updateFilterOptions() {
         const allCats = [...new Set(words.flatMap(w => w.cats))].filter(Boolean);
@@ -243,7 +236,6 @@
         const sort = document.getElementById('sort-order').value;
         let display = words.filter(w => !cat || w.cats.includes(cat));
 
-        // 統計計算
         let countNew = 0, countLearned = 0, countReview = 0;
         display.forEach(w => {
             const s = wordStatus[w.no];
@@ -255,7 +247,6 @@
         document.getElementById('stat-learned').innerText = countLearned;
         document.getElementById('stat-checked').innerText = countReview;
 
-        // ソート
         if(sort === 'status') {
             const order = { 'review': 0, 'new': 1, 'learned': 2 };
             display.sort((a,b) => (order[wordStatus[a.no]||'new']) - (order[wordStatus[b.no]||'new']));
@@ -269,6 +260,27 @@
                 'review': { icon: '✍️', class: 'bg-review', text: '要復習' }
             }[status];
 
+            // 複数例文のHTML生成
+            const exKos = w.ex_ko ? w.ex_ko.split('\n') : [];
+            const exJas = w.ex_ja ? w.ex_ja.split('\n') : [];
+            let exHtml = '';
+            if(exKos.length > 0) {
+                exHtml = '<div class="ex-box">';
+                exKos.forEach((ko, i) => {
+                    if(ko || exJas[i]) {
+                        exHtml += `
+                        <div class="ex-item">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span style="font-weight:bold; flex:1;">${ko || ''}</span>
+                                <button class="cute-speak-btn" style="width:24px; height:24px; font-size:10px;" onclick="speak(\`${ko.replace(/`/g, "\\`")}\`)">♪</button>
+                            </div>
+                            <div style="font-size:12px; color:#666;">${exJas[i] || ''}</div>
+                        </div>`;
+                    }
+                });
+                exHtml += '</div>';
+            }
+
             return `
             <div class="word-card">
                 <div class="status-badge" onclick="cycleStatus('${w.no}')">${config.icon}</div>
@@ -278,22 +290,19 @@
                     </div>
                     <div style="font-size:13px; color:#666;">${w.meaning} <span style="color:#aaa; font-size:11px;">[${w.pron}]</span></div>
                     <div style="font-size:12px; color:var(--accent);">${w.heyotai}</div>
-                    ${(w.ex_ko||w.ex_ja)?`<div class="ex-box">例文：<b>${w.ex_ko}</b><br>訳：<b>${w.ex_ja}</b></div>`:''}
+                    ${exHtml}
                 </div>
                 <button class="cute-speak-btn" onclick="speak('${w.korean}')">♪</button>
             </div>`;
         }).join('');
     }
 
-    // ステータスを 未設定 -> 要復習 -> できた -> 未設定 の順で切り替え
     function cycleStatus(no) {
         if(!no && testList[currentIdx]) no = testList[currentIdx].no;
         const current = wordStatus[no] || 'new';
         const next = { 'new': 'review', 'review': 'learned', 'learned': 'new' }[current];
-        
         if(next === 'new') delete wordStatus[no];
         else wordStatus[no] = next;
-        
         localStorage.setItem('k_word_status_v2', JSON.stringify(wordStatus));
         renderList();
         if(isListening || document.getElementById('test-display').style.display === 'block') updateStatusUI(no);
@@ -307,17 +316,14 @@
         btn.innerText = label + " (タップで切替)";
     }
 
-    // --- テストロジック ---
     function startTest() {
         testMode = document.getElementById('test-mode').value;
         const cat = document.getElementById('test-cat').value;
         const scope = document.getElementById('test-scope').value;
         const count = parseInt(document.getElementById('test-count').value);
-        
         let filtered = words.filter(w => !cat || w.cats.includes(cat));
         if(scope === "only_new") filtered = filtered.filter(w => !wordStatus[w.no]);
         if(scope === "only_checked") filtered = filtered.filter(w => wordStatus[w.no] === 'review');
-        
         testList = filtered.sort(() => Math.random() - 0.5).slice(0, count);
         if(!testList.length) return alert("対象なし");
         currentIdx = 0; 
@@ -330,8 +336,12 @@
         const q = testList[currentIdx];
         document.getElementById('test-progress').innerText = `${currentIdx + 1} / ${testList.length}`;
         document.getElementById('q-text').innerText = (testMode === 'ko-ja') ? q.korean : q.meaning;
+        
         let audioHtml = `<button class="btn-audio-mini" onclick="speak('${q.korean}')">単語 ♪</button>`;
-        if(q.ex_ko) audioHtml += `<button class="btn-audio-mini" onclick="speak('${q.ex_ko}')">例文 ♪</button>`;
+        if(q.ex_ko) {
+            const firstEx = q.ex_ko.split('\n')[0];
+            audioHtml += `<button class="btn-audio-mini" onclick="speak(\`${firstEx.replace(/`/g, "\\`")}\`)">例文 ♪</button>`;
+        }
         document.getElementById('test-audio-btns').innerHTML = audioHtml;
         document.getElementById('a-text').style.display = 'none'; 
         document.getElementById('ans-btn').style.display = 'block'; 
@@ -341,7 +351,17 @@
 
     function showAnswer() {
         const q = testList[currentIdx];
-        const exHtml = (q.ex_ko || q.ex_ja) ? `<div style="margin-top:10px; padding-top:10px; border-top:1px dashed #ffdfe1; font-size:13px;"><b>${q.ex_ko}</b><br>${q.ex_ja}</div>` : '';
+        const exKos = q.ex_ko ? q.ex_ko.split('\n') : [];
+        const exJas = q.ex_ja ? q.ex_ja.split('\n') : [];
+        let exHtml = '';
+        if(exKos.length > 0) {
+            exHtml = '<div style="margin-top:10px; padding-top:10px; border-top:1px dashed #ffdfe1; font-size:13px;">';
+            exKos.forEach((ko, i) => {
+                if(ko || exJas[i]) exHtml += `<div style="margin-bottom:5px;"><b>${ko || ''}</b><br>${exJas[i] || ''}</div>`;
+            });
+            exHtml += '</div>';
+        }
+
         document.getElementById('a-text').innerHTML = `
             <div>${testMode==='ko-ja'?'意味':'韓国語'}：<b style="color:var(--accent); font-size:1.2rem;">${testMode==='ko-ja'?q.meaning:q.korean}</b></div>
             <div style="font-size:14px; margin-top:5px;">ヘヨ体：<b>${q.heyotai || '-'}</b> / 発音：<b>${q.pron || '-'}</b></div>
@@ -353,48 +373,27 @@
         document.getElementById('post-ans-actions').style.display = 'block';
     }
 
-        // クラウド同期関数（一括送信）
     async function autoBackupToSheet() {
         const url = localStorage.getItem('conf_gas_url');
         if (!url) return;
-
-        const backupData = {
-            type: "backup",
-            data: JSON.stringify(wordStatus) // 全件のステータス
-        };
-
+        const backupData = { type: "backup", data: JSON.stringify(wordStatus) };
         try {
-            // バックグラウンドで送信
-            fetch(url, {
-                method: "POST",
-                mode: "no-cors",
-                body: JSON.stringify(backupData)
-            });
+            fetch(url, { method: "POST", mode: "no-cors", body: JSON.stringify(backupData) });
             showToast("クラウド同期完了");
-        } catch (e) {
-            console.error("Backup Error:", e);
-        }
+        } catch (e) { console.error("Backup Error:", e); }
     }
 
-    // テスト終了判定部分の差し替え
     function setResultAndNext(status) {
         const q = testList[currentIdx];
         wordStatus[q.no] = status;
         localStorage.setItem('k_word_status_v2', JSON.stringify(wordStatus));
-        
         currentIdx++;
-        if (currentIdx < testList.length) {
-            showQuestion();
-        } else {
-            autoBackupToSheet(); // ★ここで一括バックアップを実行
-            alert("テスト終了！スプレッドシートを更新しました。");
-            stopTest();
-        }
+        if (currentIdx < testList.length) showQuestion();
+        else { autoBackupToSheet(); alert("テスト終了！スプレッドシートを更新しました。"); stopTest(); }
     }
 
     function stopTest() { document.getElementById('test-setup').style.display = 'block'; document.getElementById('test-display').style.display = 'none'; renderList(); }
 
-    // --- リスニングロジック ---
     async function startListening() {
         const mode = document.getElementById('listen-mode').value;
         const cat = document.getElementById('listen-cat').value;
@@ -411,56 +410,60 @@
     }
 
     async function loopListening(mode) {
-    const gap = 800;
-    while(isListening && currentIdx < testList.length) {
-        const q = testList[currentIdx];
-        document.getElementById('listen-progress').innerText = `再生中: ${currentIdx + 1} / ${testList.length}`;
-        updateStatusUI(q.no); // 3ステータス表示の更新
-        
-        // 1. 単語の読み上げ
-        if(mode === 'ko-ja') {
-            document.getElementById('ls-ko').innerText = q.korean;
-            document.getElementById('ls-ja').innerText = "-";
-            await speak(q.korean, 'ko-KR'); await new Promise(r => setTimeout(r, gap)); 
-            if(!isListening) break;
-            document.getElementById('ls-ja').innerText = q.meaning;
-            await speak(q.meaning, 'ja-JP');
-        } else {
-            document.getElementById('ls-ko').innerText = q.meaning;
-            document.getElementById('ls-ja').innerText = "-";
-            await speak(q.meaning, 'ja-JP'); await new Promise(r => setTimeout(r, gap)); 
-            if(!isListening) break;
-            document.getElementById('ls-ja').innerText = q.korean;
-            await speak(q.korean, 'ko-KR');
-        }
-
-        await new Promise(r => setTimeout(r, gap));
-        if(!isListening) break;
-
-        // 2. 【ここが消えていた】例文の読み上げ
-        if(q.ex_ko) {
-            // 画面表示を例文に切り替え
-            document.getElementById('ls-ko').innerText = (mode === 'ko-ja') ? q.ex_ko : q.ex_ja;
-            document.getElementById('ls-ja').innerText = (mode === 'ko-ja') ? q.ex_ja : q.ex_ko;
+        const gap = 800;
+        while(isListening && currentIdx < testList.length) {
+            const q = testList[currentIdx];
+            document.getElementById('listen-progress').innerText = `再生中: ${currentIdx + 1} / ${testList.length}`;
+            updateStatusUI(q.no);
             
+            // 1. 単語
             if(mode === 'ko-ja') {
-                await speak(q.ex_ko, 'ko-KR'); 
-                await new Promise(r => setTimeout(r, 500));
-                await speak(q.ex_ja, 'ja-JP');
+                document.getElementById('ls-ko').innerText = q.korean;
+                document.getElementById('ls-ja').innerText = "-";
+                await speak(q.korean, 'ko-KR'); await new Promise(r => setTimeout(r, gap)); 
+                if(!isListening) break;
+                document.getElementById('ls-ja').innerText = q.meaning;
+                await speak(q.meaning, 'ja-JP');
             } else {
-                await speak(q.ex_ja, 'ja-JP'); 
-                await new Promise(r => setTimeout(r, 500));
-                await speak(q.ex_ko, 'ko-KR');
+                document.getElementById('ls-ko').innerText = q.meaning;
+                document.getElementById('ls-ja').innerText = "-";
+                await speak(q.meaning, 'ja-JP'); await new Promise(r => setTimeout(r, gap)); 
+                if(!isListening) break;
+                document.getElementById('ls-ja').innerText = q.korean;
+                await speak(q.korean, 'ko-KR');
+            }
+            await new Promise(r => setTimeout(r, gap));
+            if(!isListening) break;
+
+            // 2. 複数例文の連続読み上げ
+            if(q.ex_ko) {
+                const exKos = q.ex_ko.split('\n');
+                const exJas = q.ex_ja.split('\n');
+                for(let i = 0; i < exKos.length; i++) {
+                    if(!exKos[i]) continue;
+                    document.getElementById('ls-ko').innerText = (mode === 'ko-ja') ? exKos[i] : (exJas[i] || '-');
+                    document.getElementById('ls-ja').innerText = (mode === 'ko-ja') ? (exJas[i] || '-') : exKos[i];
+                    if(mode === 'ko-ja') {
+                        await speak(exKos[i], 'ko-KR'); 
+                        await new Promise(r => setTimeout(r, 500));
+                        if(exJas[i]) await speak(exJas[i], 'ja-JP');
+                    } else {
+                        if(exJas[i]) await speak(exJas[i], 'ja-JP'); 
+                        await new Promise(r => setTimeout(r, 500));
+                        await speak(exKos[i], 'ko-KR');
+                    }
+                    await new Promise(r => setTimeout(r, 1000));
+                    if(!isListening) break;
+                }
+            }
+            
+            await new Promise(r => setTimeout(r, gap));
+            currentIdx++;
+            if(currentIdx >= testList.length) {
+                if(confirm("リピートしますか？")) currentIdx = 0; else stopListening();
             }
         }
-        
-        await new Promise(r => setTimeout(r, gap * 2));
-        currentIdx++;
-        if(currentIdx >= testList.length) {
-            if(confirm("最初からリピートしますか？")) { currentIdx = 0; } else { stopListening(); }
-        }
     }
-}
 
     function stopListening() { isListening = false; window.speechSynthesis.cancel(); document.getElementById('listen-setup').style.display = 'block'; document.getElementById('listen-display').style.display = 'none'; }
 
