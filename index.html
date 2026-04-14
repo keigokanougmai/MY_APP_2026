@@ -185,23 +185,40 @@
 
     function saveConfig() { localStorage.setItem('conf_gas_url', document.getElementById('conf-gas-url').value.trim()); showToast("保存完了"); }
 
-    function speak(text, lang = 'ko-KR') {
-        return new Promise((resolve) => {
-            if (!window.speechSynthesis || !text) return resolve();
-            window.speechSynthesis.cancel();
-            const uttr = new SpeechSynthesisUtterance(text);
-            const voices = window.speechSynthesis.getVoices();
-            const voice = voices.find(v => v.lang.startsWith(lang) && v.name.includes('Google')) 
-                       || voices.find(v => v.lang.startsWith(lang) && v.name.includes('Siri'))
-                       || voices.find(v => v.lang.startsWith(lang));
-            if (voice) uttr.voice = voice;
-            uttr.lang = lang;
-            uttr.rate = 0.9;
-            uttr.onend = () => resolve();
-            window.speechSynthesis.speak(uttr);
-            setTimeout(resolve, 8000);
-        });
+    async function speak(text, lang = 'ko-KR') {
+    if (!window.speechSynthesis || !text) return;
+    
+    // 音声の重複を防ぐため一度キャンセル
+    window.speechSynthesis.cancel();
+    
+    const uttr = new SpeechSynthesisUtterance(text);
+    uttr.lang = lang;
+    uttr.rate = 0.9; // iOS 18では少し遅くすると品質が安定します
+    uttr.pitch = 1.0;
+    uttr.volume = 1.0;
+
+    // 音声エンジンの選択ロジックを強化
+    const voices = window.speechSynthesis.getVoices();
+    
+    // 品質が高いとされているエンジンを優先的に抽出
+    const preferredVoice = voices.find(v => 
+        (v.lang.startsWith(lang)) && 
+        (v.name.includes('Google') || v.name.includes('Premium') || v.name.includes('Siri'))
+    ) || voices.find(v => v.lang.startsWith(lang));
+
+    if (preferredVoice) {
+        uttr.voice = preferredVoice;
     }
+
+    return new Promise((resolve) => {
+        uttr.onend = () => resolve();
+        uttr.onerror = (e) => {
+            console.error("Speech Error:", e);
+            resolve();
+        };
+        window.speechSynthesis.speak(uttr);
+    });
+}
 
     async function syncFromSheet() {
         const url = localStorage.getItem('conf_gas_url');
