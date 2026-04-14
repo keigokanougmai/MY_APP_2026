@@ -67,7 +67,8 @@
     <div class="tabs">
         <button class="tab-btn active" onclick="showPanel('add', event)">登録</button>
         <button class="tab-btn" onclick="showPanel('list', event)">単語帳</button>
-        <button class="tab-btn" onclick="showPanel('test', event)">テスト</button>
+        <button class="tab-btn" onclick="showPanel('test', event)">単語テスト</button>
+        <button class="tab-btn" onclick="showPanel('extest', event)">例文テスト</button>
         <button class="tab-btn" onclick="showPanel('listen', event)">リスニング</button>
         <button class="tab-btn" onclick="showPanel('settings', event)">設定</button>
     </div>
@@ -126,6 +127,28 @@
         </div>
     </div>
 
+    <div id="panel-extest" class="panel">
+    <div id="ex-setup">
+    <div class="form-group"><label>出題モード</label><select id="ex-test-mode"><option value="ko-ja">韓国語 ⇨ 日本語</option><option value="ja-ko">日本語 ⇨ 韓国語</option></select></div>
+    <div class="form-group"><label>カテゴリ</label><select id="ex-test-cat"></select></div>
+    <div class="form-group"><label>出題範囲</label><select id="ex-test-scope"><option value="all">すべて</option><option value="only_new">🆕 未設定のみ</option><option value="only_checked">✍️ 要復習のみ</option></select></div>
+    <div class="form-group"><label>問題数</label><select id="ex-test-count"><option value="10">10問</option><option value="20">20問</option><option value="999">すべて</option></select></div>
+    <button class="btn-main" onclick="startExTest()">例文テスト開始</button>
+</div>
+    <div id="ex-display" style="display:none; text-align:center;">
+        <div id="ex-progress"></div>
+        <div id="ex-q-text" style="font-size:24px; font-weight:bold; margin:30px 0;"></div>
+        <button class="btn-main" id="ex-ans-btn" onclick="showExAnswer()">答えを見る</button>
+        <div id="ex-ans-area" style="display:none;">
+            <div id="ex-a-text" style="font-size:1.2rem; margin:20px 0;"></div>
+            <div class="btn-flex">
+                <button class="btn-main btn-check" onclick="nextEx(false)">わからない✍️</button>
+                <button class="btn-main btn-know" onclick="nextEx(true)">わかった🌸</button>
+            </div>
+        </div>
+    </div>
+</div>
+
     <div id="panel-listen" class="panel">
         <div id="listen-setup">
             <div class="form-group"><label>再生モード</label><select id="listen-mode"><option value="ko-ja">韓国語 ⇨ 日本語</option><option value="ja-ko">日本語 ⇨ 韓国語</option></select></div>
@@ -161,6 +184,9 @@
     let currentIdx = 0;
     let isListening = false;
     let testMode = 'ko-ja';
+    let exTestList = [];
+    let exCurrentIdx = 0;
+    let exTestMode = 'ko-ja'; // 追加
 
     window.onload = () => {
         document.getElementById('conf-gas-url').value = localStorage.getItem('conf_gas_url') || '';
@@ -247,12 +273,14 @@
     }
 
     function updateFilterOptions() {
-        const allCats = [...new Set(words.flatMap(w => w.cats))].filter(Boolean);
-        const options = '<option value="">すべてのカテゴリ</option>' + allCats.map(c => `<option value="${c}">${c}</option>`).join('');
-        ['filter-cat', 'test-cat', 'listen-cat'].forEach(id => {
-            const el = document.getElementById(id); if(el) { const cur = el.value; el.innerHTML = options; el.value = cur; }
-        });
-    }
+    const allCats = [...new Set(words.flatMap(w => w.cats))].filter(Boolean);
+    const options = '<option value="">すべてのカテゴリ</option>' + allCats.map(c => `<option value="${c}">${c}</option>`).join('');
+    // IDのリストに ex-test-cat を追加
+    ['filter-cat', 'test-cat', 'listen-cat', 'ex-test-cat'].forEach(id => {
+        const el = document.getElementById(id); 
+        if(el) { const cur = el.value; el.innerHTML = options; el.value = cur; }
+    });
+}
 
 function renderList() {
     // 1. 要素の取得（存在確認付き）
@@ -436,15 +464,28 @@ function renderList() {
         document.getElementById('post-ans-actions').style.display = 'block';
     }
 
-    async function autoBackupToSheet() {
-        const url = localStorage.getItem('conf_gas_url');
-        if (!url) return;
-        const backupData = { type: "backup", data: JSON.stringify(wordStatus) };
-        try {
-            fetch(url, { method: "POST", mode: "no-cors", body: JSON.stringify(backupData) });
-            showToast("クラウド同期完了");
-        } catch (e) { console.error("Backup Error:", e); }
-    }
+async function autoBackupToSheet() {
+    const url = localStorage.getItem('conf_gas_url');
+    if (!url) return;
+
+    const dataToSend = {
+        type: "backup",
+        wordStatus: localStorage.getItem('k_word_status_v2') || '{}',
+        exStatus: localStorage.getItem('k_ex_status_v1') || '{}'
+    };
+    
+    // 【確認用】送信するデータをコンソールに出力
+    console.log("GASへ送るデータ:", dataToSend);
+
+    try {
+        await fetch(url, { 
+            method: "POST", 
+            mode: "no-cors", 
+            body: JSON.stringify(dataToSend) // ここを dataToSend に変更
+        });
+        showToast("クラウド同期完了");
+    } catch (e) { console.error("Backup Error:", e); }
+}
 
     function setResultAndNext(status) {
         const q = testList[currentIdx];
@@ -549,6 +590,111 @@ function renderList() {
             ['in-ko','in-heyotai','in-ja','in-pron','in-cat','in-ex-ko','in-ex-ja'].forEach(id => document.getElementById(id).value = '');
         } catch (e) { alert("エラー"); }
     }
+
+    /*例文テスト用スクリプト*/
+function startExTest() {
+    exTestMode = document.getElementById('ex-test-mode').value;
+    const cat = document.getElementById('ex-test-cat').value;
+    const scope = document.getElementById('ex-test-scope').value;
+    const count = parseInt(document.getElementById('ex-test-count').value);
+    const exStatus = JSON.parse(localStorage.getItem('k_ex_status_v1')) || {};
+
+    exTestList = [];
+    
+    // 全単語を走査
+    words.forEach(w => {
+        // カテゴリ一致チェック (catが空なら全通過)
+        if (cat && (!w.cats || !w.cats.includes(cat))) return;
+
+        const kos = (w.ex_ko || '').split('\n');
+        const jas = (w.ex_ja || '').split('\n');
+        
+        kos.forEach((ko, i) => {
+            const trimmedKo = ko.trim();
+            if (!trimmedKo) return; // 空の例文は無視
+            
+            const exKey = `${w.no}-${i}`;
+            const status = exStatus[exKey] || 'new';
+
+            // 範囲フィルタ
+            if (scope === "only_new" && status !== 'new') return;
+            if (scope === "only_checked" && status !== 'review') return;
+
+            exTestList.push({ ko: trimmedKo, ja: jas[i] || '', word: w.korean, id: exKey });
+        });
+    });
+
+    // --- デバッグ用ログ ---
+    console.log("フィルタ後のリスト:", exTestList);
+    console.log("現在のフィルター設定:", { mode: exTestMode, cat, scope, count });
+
+    if (exTestList.length === 0) {
+        alert("条件に一致する例文が見つかりません。\nカテゴリや範囲設定を見直してください。");
+        return;
+    }
+    
+    exTestList = exTestList.sort(() => Math.random() - 0.5).slice(0, count);
+    
+    exCurrentIdx = 0;
+    document.getElementById('ex-setup').style.display = 'none';
+    document.getElementById('ex-display').style.display = 'block';
+    showExQuestion();
+}
+
+function showExQuestion() {
+    const q = exTestList[exCurrentIdx];
+    const mode = document.getElementById('ex-test-mode').value; // 【ここを修正】毎回最新を取得
+    
+    document.getElementById('ex-progress').innerText = `${exCurrentIdx + 1} / ${exTestList.length}`;
+    
+    // 判定：mode が 'ko-ja' なら韓国語、'ja-ko' なら日本語を表示
+    document.getElementById('ex-q-text').innerText = (mode === 'ko-ja') ? q.ko : q.ja;
+    
+    document.getElementById('ex-ans-area').style.display = 'none';
+    document.getElementById('ex-ans-btn').style.display = 'block';
+    
+    // ko-ja モードの時だけ、問題文（韓国語）を読み上げる
+    if(mode === 'ko-ja') speak(q.ko);
+}
+
+function showExAnswer() {
+    const q = exTestList[exCurrentIdx];    
+    const mode = document.getElementById('ex-test-mode').value;
+    // ...以降は同じ
+    
+    const ansText = (mode === 'ko-ja') ? q.ja : q.ko;
+    
+    document.getElementById('ex-a-text').innerHTML = `<b>${ansText}</b><br><small>(${q.word})</small>`;
+    document.getElementById('ex-ans-area').style.display = 'block';
+    document.getElementById('ex-ans-btn').style.display = 'none';
+    
+    // ja-ko モードの時だけ、答え（韓国語）を読み上げる
+    if(mode === 'ja-ko') speak(q.ko);
+}
+
+function nextEx(isCorrect) {
+    // 1. 例文のIDを取得してステータスを保存
+    const q = exTestList[exCurrentIdx];
+    const status = isCorrect ? 'learned' : 'review';
+    
+    let exStatus = JSON.parse(localStorage.getItem('k_ex_status_v1')) || {};
+    exStatus[q.id] = status;
+    localStorage.setItem('k_ex_status_v1', JSON.stringify(exStatus));
+
+    // 2. 次の問題へ、または終了処理
+    exCurrentIdx++;
+    if (exCurrentIdx < exTestList.length) {
+        showExQuestion();
+    } else {
+        alert("終了！");
+        // 3. 終了時にクラウド同期（バックアップ）を実行
+        if (typeof autoBackupToSheet === 'function') {
+            autoBackupToSheet();
+        }
+        stopExTest();
+    }
+}
+
 </script>
 </body>
 </html>
